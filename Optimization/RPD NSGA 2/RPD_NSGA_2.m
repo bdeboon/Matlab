@@ -22,6 +22,7 @@ range(:,2) = range(:,2)*-1000; %Min is -1000
 %Initialize population
 parent_pop = zeros(pop_size,dim);
 variation_pop = zeros(pop_size,dim);
+fitness_extremes = zeros(num_obj, 2); % Formatted as [max, min]
 
 
 parent_pop = rand(pop_size,dim);
@@ -35,6 +36,12 @@ end
 num_combs = nchoosek((num_obj + num_div - 1), num_div);
 normalized_vec = linspace(0,1, num_div + 1);  
 RPset = zeros(num_combs, num_obj);
+RPdensity = zeros(num_combs,1);
+
+
+
+%Distances d_1 and d_2
+
 
 A = permn(normalized_vec, num_obj);
 B = sum(A') == 1;
@@ -49,8 +56,118 @@ end
 while generation < 1000 
    variation_pop = variation(parent_pop, range); 
    merged_pop = union(parent_pop, variation_pop, 'rows');
+   fitness = zeros(size(merged_pop,1), num_obj);
+   for i = 1:num_obj
+       fitness(:,i) = objective(merged_pop, i);
+       fitness_extremes(i, 2) = min(fitness(:,i));
+       fitness_extremes(i, 1) = max(fitness(:,i));
+   end
+   fitness = normalize(fitness, fitness_extremes);
+   d_2 = zeros(size(fitness,1), 3); % [value, index, RPdensity]
+   d_2(:,1:2) = calc_d2(fitness, RPset);
+   d_1 = zeros(size(fitness,1), 1);
+   d_1 = calc_d1(fitness, RPset, d_2);
+   for i = 1:num_combs
+      RPdensity(i) = sum(d_2(:,2) == i); 
+   end
+   d_2(:,3) = RPdensity(d_2(:,2));
+   for i = 1:num_obj
+      [o idx] = min(fitness(:,i));
+      d_2(idx, 3) = 0; %Set RPdensity of extremes to 0
+   end
+   sorted_sol = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fitness_extremes);
    
    generation = generation + 1; 
+end
+
+function sorted_sol = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fitness_extremes)
+    size_pop = size(merged_pop,1);
+    num_obj = size(fitness,2);
+    %p_dom = true(size_pop, size_pop);
+    p_dom = false(size_pop, size_pop);
+    total_p_dom = true(size_pop, size_pop);
+    rp_dom = true(size_pop, size_pop);
+    p_fronts = zeros(size_pop,1);
+    for i = 1:size_pop
+        for j = 1:num_obj
+            p_dom(i,:) = p_dom(i,:) | logical(fitness(i,j) < fitness(:,j))';
+        end
+        %rp_dom(i,:) = rp_dom(i,:) & p_dom' ; %Pareto Dom. Condition 1.)
+        rp_a = logical(d_2(i,2) == d_2(:,2)) & logical(d_1(i) < d_1(:));
+        rp_b = logical(d_2(i,2) ~= d_2(:,2)) & logical(d_1(i) < d_1(:)) & logical(d_2(i,3) < d_2(:,3));
+        rp_dom(i,:) = rp_a' | rp_b';
+        
+    end
+    i = 1;
+    count = 1;
+    selected_sol = zeros(1,size_pop);
+    p_dom_check = p_dom;
+    %Find Pareto Fronts usind non-pareto criteria
+    while(min(sum(p_dom_check')) ~= size_pop)
+        sum_p_dom = sum(p_dom_check');
+        %p_dom_unique = unique(sum_p_dom);
+        %num_fronts = size(p_dom_unique,2); 
+        %C = find(sum_p_dom == p_dom_unique(i));
+        C = find(sum_p_dom == min(sum_p_dom));
+        for j = 1:size(C,2)
+            p_fronts(C(j)) = i;
+            p_dom_check(:, C(j)) = false(size_pop,1); %Reset Dominance for last front
+            selected_sol(count) = C(j);
+            count = count + 1;
+        end
+        for j = 1:count-1
+            p_dom_check(selected_sol(j),:) = true(1,size_pop); %Exclude from future pf calc
+        end
+        i = i + 1;
+    end
+    p_fronts = (i) - p_fronts;
+    %Find RP-dominated Pareto Front
+    for i = 1:size_pop
+        rp_dom(i,:) = (logical(p_fronts(i) < p_fronts(:)))' | (logical(p_fronts(i) == p_fronts(:))' & rp_dom(i,:)); 
+    end
+    
+    
+    
+end
+
+
+function sol = objective(m_pop, idx)   
+    sol = zeros(size(m_pop,1),1);
+        switch idx
+            case 1
+                sol = m_pop(:,1) + m_pop(:,2) + m_pop(:,3) + m_pop(:,4) + m_pop(:,5);
+            case 2
+                sol = m_pop(:,5).*m_pop(:,4).*m_pop(:,3).*m_pop(:,2).*m_pop(:,1);
+        end
+end
+
+
+
+
+
+function d_1 = calc_d1(fit, ref, d_2)
+    [pop_size, num_f] = size(fit);
+    d_1 = zeros(pop_size,1);
+    for n = 1:pop_size 
+        d_1(n) = dot(fit(n,:), ref(d_2(n,2),:));
+    end
+end
+
+function d_2 = calc_d2(fit, RPset)
+    [pop_size, num_f] = size(fit);
+    d_2 = zeros(pop_size,2);
+    for n = 1:pop_size 
+        d2_dist = sqrt(sum((fit(n,:)-RPset)'.^2)');
+        [d_2(n,1), d_2(n,2)] = min(d2_dist);
+    end
+    
+end
+
+function norm = normalize(pop, extremes)
+    norm = zeros(size(pop,1), size(pop,2));
+    for k = 1:size(pop,2)
+       norm(:,k) = (pop(:,k) - extremes(k,2))./(extremes(k,1) - extremes(k,2));
+    end
 end
 
 %Crossover and Mutation
