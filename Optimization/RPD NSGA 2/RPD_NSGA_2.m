@@ -4,7 +4,7 @@ pop_size = 100; %Population Size
 num_obj = 2; %Number of objectives
 num_div = 20; %Number of divisions
 t = 0;
-dim = 5;
+dim = 2;
 global zeta_c;
 global zeta_m;
 zeta_c = 20;
@@ -54,6 +54,7 @@ end
 
 %Line 5
 while generation < 1000 
+   next_gen_pop = zeros(pop_size,dim);
    variation_pop = variation(parent_pop, range); 
    merged_pop = union(parent_pop, variation_pop, 'rows');
    fitness = zeros(size(merged_pop,1), num_obj);
@@ -75,12 +76,40 @@ while generation < 1000
       [o idx] = min(fitness(:,i));
       d_2(idx, 3) = 0; %Set RPdensity of extremes to 0
    end
-   sorted_sol = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fitness_extremes);
-   
+   fronts = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fitness_extremes);
+   for i = 1:pop_size
+       [val idx] = min(fronts);
+       num_sol_in_front = size(find(fronts == val),1);
+       if num_sol_in_front <= (pop_size + 1 - i)
+            next_gen_pop(i,:) = merged_pop(idx,:);
+            fronts(idx) = pop_size+1; %Makes sure solution not chosen again
+       elseif num_sol_in_front > (pop_size - i)%Truncation of last front
+            sol_location = find(fronts == val);
+            last_f_best = d_2(sol_location(1),1);
+            best_loc = sol_location(1);
+            for j = 1:(size(find(fronts == val),1)-1)
+                if d_2(sol_location(j+1),1) < best_loc
+                    last_f_best = d_2(sol_location(j+1),1);
+                    best_loc = sol_location(j+1);
+                end
+            end
+            next_gen_pop(i,:) = merged_pop(best_loc,:);
+       end
+   end
+   parent_pop = next_gen_pop;
    generation = generation + 1; 
+   clf;
+   scatter(fitness(:,1),fitness(:,2));
+   drawnow
+   
 end
 
-function sorted_sol = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fitness_extremes)
+
+
+
+
+
+function rp_fronts = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fitness_extremes)
     size_pop = size(merged_pop,1);
     num_obj = size(fitness,2);
     %p_dom = true(size_pop, size_pop);
@@ -88,6 +117,9 @@ function sorted_sol = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, f
     total_p_dom = true(size_pop, size_pop);
     rp_dom = true(size_pop, size_pop);
     p_fronts = zeros(size_pop,1);
+    rp_fronts = zeros(size_pop,1);
+    fronts = zeros(size_pop,2);
+    
     for i = 1:size_pop
         for j = 1:num_obj
             p_dom(i,:) = p_dom(i,:) | logical(fitness(i,j) < fitness(:,j))';
@@ -126,7 +158,30 @@ function sorted_sol = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, f
         rp_dom(i,:) = (logical(p_fronts(i) < p_fronts(:)))' | (logical(p_fronts(i) == p_fronts(:))' & rp_dom(i,:)); 
     end
     
-    
+    i = 1;
+    count = 1;
+    selected_sol = zeros(1,size_pop);
+    rp_dom_check = rp_dom;
+    %Find Pareto Fronts usind non-pareto criteria
+    while(min(sum(rp_dom_check')) ~= size_pop)
+        sum_rp_dom = sum(rp_dom_check');
+        %p_dom_unique = unique(sum_p_dom);
+        %num_fronts = size(p_dom_unique,2); 
+        %C = find(sum_p_dom == p_dom_unique(i));
+        C = find(sum_rp_dom == min(sum_rp_dom));
+        for j = 1:size(C,2)
+            rp_fronts(C(j)) = i;
+            rp_dom_check(:, C(j)) = false(size_pop,1); %Reset Dominance for last front
+            selected_sol(count) = C(j);
+            count = count + 1;
+        end
+        for j = 1:count-1
+            rp_dom_check(selected_sol(j),:) = true(1,size_pop); %Exclude from future pf calc
+        end
+        i = i + 1;
+    end
+    rp_fronts = (i) - rp_fronts;
+    fronts = [p_fronts rp_fronts];
     
 end
 
@@ -135,9 +190,23 @@ function sol = objective(m_pop, idx)
     sol = zeros(size(m_pop,1),1);
         switch idx
             case 1
-                sol = m_pop(:,1) + m_pop(:,2) + m_pop(:,3) + m_pop(:,4) + m_pop(:,5);
+                %Auckleys
+                %sol = m_pop(:,1) + m_pop(:,2); % + m_pop(:,3) + m_pop(:,4) + m_pop(:,5);
+                for i = 1:size(m_pop,1)
+                    term1_sum = sum(m_pop(i,:).^2);
+                    term2_sum = sum(cos(2*pi*m_pop(i,:)));
+                    sol(i,1) = -20*exp(-0.2*sqrt((1/2)*term1_sum)) - exp((1/2)*term2_sum) + 20 + exp(1);
+                end
             case 2
-                sol = m_pop(:,5).*m_pop(:,4).*m_pop(:,3).*m_pop(:,2).*m_pop(:,1);
+                %High Conditioned E
+                for i = 1:size(m_pop,1)
+                    F1 = zeros(1,2);
+                    for a = 1:2
+                        F1(a) = (10^6)^((a-1)/(2-1));
+                    end
+                    sol(i,1) = sum(F1.*m_pop(i,:).^2);
+                end
+                %sol = m_pop(:,1).*m_pop(:,2); %.*m_pop(:,3).*m_pop(:,2).*m_pop(:,1);
         end
 end
 
