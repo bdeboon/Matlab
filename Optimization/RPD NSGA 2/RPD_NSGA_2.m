@@ -5,7 +5,7 @@
 pop_size = 100; %Population Size
 num_obj = 2; %Number of objectives
 num_div = 20; %Number of divisions
-dim = 2; %Dimension of Problem
+dim = 30; %Dimension of Problem
 global zeta_c; %Crossover Rate
 global zeta_m; %Mutation Rate
 zeta_c = 20; % Recommended by "Analyzing Mutation Schemes for Real-Parameter Genetic Algorithms" Deb and Deb
@@ -15,8 +15,8 @@ generation = 0; %Number of generations
 range = ones(dim, 2); %Create range of variables for evaluation in
 %the form of [max min; max min; ...]
 
-range(:,1) = range(:,1)*1000; %Max is 1000
-range(:,2) = range(:,2)*-1000; %Min is -1000
+range(:,1) = range(:,1)*1; %Max is 1000
+range(:,2) = range(:,2)*0; %Min is -1000
 
 %Initialize population
 parent_pop = zeros(pop_size,dim); %Parent Population
@@ -88,8 +88,10 @@ while generation < 1000 %Run for 1000 Generations
       d_2(idx, 3) = 0; %Set RPdensity of extremes to 0
    end
    
-   %Calculate non-RPD Pareto Fronts
+   %Calculate non-RPD domination ranks
    fronts = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fitness_extremes);
+   
+   %Create Child Population with members of the best performing fronts
    for i = 1:pop_size
        [val idx] = min(fronts);
        num_sol_in_front = size(find(fronts == val),1);
@@ -114,14 +116,14 @@ while generation < 1000 %Run for 1000 Generations
    generation = generation + 1;
    
    %If dimension 2, plot objective space and decision space, respectively
-   if(D == 2)
+   %if(dim == 2)
         clf;
         subplot(2,1,1);
         scatter(fitness(:,1),fitness(:,2));
         subplot(2,1,2);
         scatter(parent_pop(:,1), parent_pop(:,2));  
         drawnow
-   end
+   %end
    
 end
 
@@ -213,23 +215,42 @@ function sol = objective(m_pop, idx)
             case 1
                 %Auckleys
                 %sol = m_pop(:,1) + m_pop(:,2); % + m_pop(:,3) + m_pop(:,4) + m_pop(:,5);
-                for i = 1:size(m_pop,1)
-                    term1_sum = sum(m_pop(i,:).^2);
-                    term2_sum = sum(cos(2*pi*m_pop(i,:)));
-                    sol(i,1) = -20*exp(-0.2*sqrt((1/2)*term1_sum)) - exp((1/2)*term2_sum) + 20 + exp(1);
-                end
+                %for i = 1:size(m_pop,1)
+                %    term1_sum = sum(m_pop(i,:).^2);
+                %    term2_sum = sum(cos(2*pi*m_pop(i,:)));
+                %    sol(i,1) = -20*exp(-0.2*sqrt((1/2)*term1_sum)) - exp((1/2)*term2_sum) + 20 + exp(1);
+                
+                %Binh and Korn
+                %sol = 4.*(m_pop(:,1).^2) + 4.*(m_pop(:,2).^2);
+            
+                %DTLZ 1, 2, 3
+                sol = m_pop(:,1);
+                
             case 2
                 %High Conditioned E
-                for i = 1:size(m_pop,1)
-                    F1 = zeros(1,2);
-                    for a = 1:2
-                        F1(a) = (10^6)^((a-1)/(2-1));
-                    end
-                    sol(i,1) = sum(F1.*m_pop(i,:).^2);
-                end
-                %sol = m_pop(:,1).*m_pop(:,2); %.*m_pop(:,3).*m_pop(:,2).*m_pop(:,1);
+                %for i = 1:size(m_pop,1)
+                %    F1 = zeros(1,2);
+                %    for a = 1:2
+                %        F1(a) = (10^6)^((a-1)/(2-1));
+                %    end
+                %sol(i,1) = sum(F1.*m_pop(i,:).^2);
+                
+                %Binh and Korn
+                %sol = (m_pop(:,1) - 5).^2 + (m_pop(:,2) - 5).^2;
+                
+                %DTLZ1
+                %g = 1 + (9/29)*(sum(m_pop(:,2:end)'))';
+                %h = 1 - sqrt(m_pop(:,1)./g);
+                %sol = g.*h;
+                
+                %DTLZ3
+                g = 1 + (9/29)*(sum(m_pop(:,2:end)'))';
+                h = 1 - sqrt(m_pop(:,1)./g) - (m_pop(:,1)./g).*sin(10*pi*m_pop(:,1));
+                sol = g.*h;
+         end
+              
         end
-end
+
 
 
 
