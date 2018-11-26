@@ -1,17 +1,16 @@
 % RPD-NSGA-II
+% Brayden DeBoon, November 2018
+% brayden.deboon@uoit.net
 
 pop_size = 100; %Population Size
 num_obj = 2; %Number of objectives
 num_div = 20; %Number of divisions
-t = 0;
-dim = 2;
-global zeta_c;
-global zeta_m;
-zeta_c = 20;
-zeta_m = 20;
-p_c = 0.9; %Probability of crossover
-p_m = 0.05; %Probability of mutation
-generation = 0;
+dim = 2; %Dimension of Problem
+global zeta_c; %Crossover Rate
+global zeta_m; %Mutation Rate
+zeta_c = 20; % Recommended by "Analyzing Mutation Schemes for Real-Parameter Genetic Algorithms" Deb and Deb
+zeta_m = 20; % ''
+generation = 0; %Number of generations
 
 range = ones(dim, 2); %Create range of variables for evaluation in
 %the form of [max min; max min; ...]
@@ -20,62 +19,76 @@ range(:,1) = range(:,1)*1000; %Max is 1000
 range(:,2) = range(:,2)*-1000; %Min is -1000
 
 %Initialize population
-parent_pop = zeros(pop_size,dim);
-variation_pop = zeros(pop_size,dim);
-fitness_extremes = zeros(num_obj, 2); % Formatted as [max, min]
+parent_pop = zeros(pop_size,dim); %Parent Population
+variation_pop = zeros(pop_size,dim); %Variant Population
+fitness_extremes = zeros(num_obj, 2); %Formatted as [max, min]
 
-
+%\\\\\\\   Initialize Parent Population 
 parent_pop = rand(pop_size,dim);
 for i = 1:dim
     %Map random numbers to variable range = rand*(max - min) + min
     parent_pop(:,i) =  parent_pop(:,i).*(range(i,1) - range(i,2)) +  range(i,2);
 end 
+%///////////////////////////////////////
 
-%Reference Point Set
+
+%\\\\\\\\\\\\\\\   Reference Point Set
 % Based on normalized hyperplane
-num_combs = nchoosek((num_obj + num_div - 1), num_div);
+num_combs = nchoosek((num_obj + num_div - 1), num_div); %Defines number of possible combinations
 normalized_vec = linspace(0,1, num_div + 1);  
-RPset = zeros(num_combs, num_obj);
-RPdensity = zeros(num_combs,1);
+A = permn(normalized_vec, num_obj); %Get All Permutations
+C = find(sum(A') == 1); %Find Permutations with sum = 1
+% From "Normal-Boundary Intersection: A New Method for Generating the
+% Pareto Surface in Nonlinear Multicriteria Optimization Problems"
 
-
-
-%Distances d_1 and d_2
-
-
-A = permn(normalized_vec, num_obj);
-B = sum(A') == 1;
-C = find(B);
-
+RPset = zeros(num_combs, num_obj); %Referece Point Set
+RPdensity = zeros(num_combs,1); %Reference Point Density
 %Generate Reference Points
 for i = 1:sum(B)
     RPset(i,:) = A(C(i),:);
 end
+%//////////////////////////////////////
 
-%Line 5
-while generation < 1000 
-   next_gen_pop = zeros(pop_size,dim);
-   variation_pop = variation(parent_pop, range); 
-   merged_pop = union(parent_pop, variation_pop, 'rows');
-   fitness = zeros(size(merged_pop,1), num_obj);
+
+% Run the optimizer RPD-NSGA-2
+while generation < 1000 %Run for 1000 Generations
+   next_gen_pop = zeros(pop_size,dim); %Zero Child Population
+   variation_pop = variation(parent_pop, range); %Vary Parent Population
+   merged_pop = union(parent_pop, variation_pop, 'rows'); %Merge Parent and Variant Populations
+   fitness = zeros(size(merged_pop,1), num_obj); %Zero Fitness Values
+   %Find fitness for each objective
    for i = 1:num_obj
        fitness(:,i) = objective(merged_pop, i);
+       %Find extreme fitness values for each objective for normalization
        fitness_extremes(i, 2) = min(fitness(:,i));
        fitness_extremes(i, 1) = max(fitness(:,i));
    end
+   %Normalize the fitness to [0,1]
    fitness = normalize(fitness, fitness_extremes);
+   
+   %d_2 is the euclidean distance to the nearest reference point 
    d_2 = zeros(size(fitness,1), 3); % [value, index, RPdensity]
    d_2(:,1:2) = calc_d2(fitness, RPset);
-   d_1 = zeros(size(fitness,1), 1);
+   
+   %d_1 is the distance from the origin to the foot of the normal
+   d_1 = zeros(size(fitness,1), 1); % [value]
    d_1 = calc_d1(fitness, RPset, d_2);
+   
+   %Calculate density with respect to each reference point
    for i = 1:num_combs
       RPdensity(i) = sum(d_2(:,2) == i); 
    end
+   
+   %Associate Density to each individual
    d_2(:,3) = RPdensity(d_2(:,2));
+   
+   %favour extremes by setting density to zero
    for i = 1:num_obj
       [o idx] = min(fitness(:,i));
       d_2(idx, 3) = 0; %Set RPdensity of extremes to 0
    end
+   
+   %Calculate non-RPD Pareto Fronts
    fronts = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fitness_extremes);
    for i = 1:pop_size
        [val idx] = min(fronts);
@@ -96,11 +109,19 @@ while generation < 1000
             next_gen_pop(i,:) = merged_pop(best_loc,:);
        end
    end
+  
    parent_pop = next_gen_pop;
-   generation = generation + 1; 
-   clf;
-   scatter(fitness(:,1),fitness(:,2));
-   drawnow
+   generation = generation + 1;
+   
+   %If dimension 2, plot objective space and decision space, respectively
+   if(D == 2)
+        clf;
+        subplot(2,1,1);
+        scatter(fitness(:,1),fitness(:,2));
+        subplot(2,1,2);
+        scatter(parent_pop(:,1), parent_pop(:,2));  
+        drawnow
+   end
    
 end
 
