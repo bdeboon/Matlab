@@ -44,7 +44,7 @@ C = find(sum(A') == 1); %Find Permutations with sum = 1
 RPset = zeros(num_combs, num_obj); %Referece Point Set
 RPdensity = zeros(num_combs,1); %Reference Point Density
 %Generate Reference Points
-for i = 1:sum(B)
+for i = 1:sum(sum(A') == 1)
     RPset(i,:) = A(C(i),:);
 end
 %//////////////////////////////////////
