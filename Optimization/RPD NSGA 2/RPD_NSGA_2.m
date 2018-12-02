@@ -8,8 +8,12 @@ num_div = 20; %Number of divisions
 dim = 30; %Dimension of Problem
 global zeta_c; %Crossover Rate
 global zeta_m; %Mutation Rate
+global F;
+global Cr;
+Cr = 0.8;
+F = 0.8;
 zeta_c = 20; % Recommended by "Analyzing Mutation Schemes for Real-Parameter Genetic Algorithms" Deb and Deb
-zeta_m = 20; % ''
+zeta_m = 20; % '20'
 generation = 0; %Number of generations
 
 range = ones(dim, 2); %Create range of variables for evaluation in
@@ -51,9 +55,9 @@ end
 
 
 % Run the optimizer RPD-NSGA-2
-while generation < 1000 %Run for 1000 Generations
+while generation < 10000 %Run for 1000 Generations
    next_gen_pop = zeros(pop_size,dim); %Zero Child Population
-   variation_pop = variation(parent_pop, range); %Vary Parent Population
+   variation_pop = DE_variation(parent_pop, range, num_obj); %Vary Parent Population
    merged_pop = union(parent_pop, variation_pop, 'rows'); %Merge Parent and Variant Populations
    fitness = zeros(size(merged_pop,1), num_obj); %Zero Fitness Values
    %Find fitness for each objective
@@ -64,7 +68,7 @@ while generation < 1000 %Run for 1000 Generations
        fitness_extremes(i, 1) = max(fitness(:,i));
    end
    %Normalize the fitness to [0,1]
-   fitness = normalize(fitness, fitness_extremes);
+   %fitness = normalize(fitness, fitness_extremes);
    
    %d_2 is the euclidean distance to the nearest reference point 
    d_2 = zeros(size(fitness,1), 3); % [value, index, RPdensity]
@@ -83,10 +87,12 @@ while generation < 1000 %Run for 1000 Generations
    d_2(:,3) = RPdensity(d_2(:,2));
    
    %favour extremes by setting density to zero
+
    for i = 1:num_obj
       [o idx] = min(fitness(:,i));
       d_2(idx, 3) = 0; %Set RPdensity of extremes to 0
    end
+ 
    
    %Calculate non-RPD domination ranks
    fronts = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fitness_extremes);
@@ -118,10 +124,10 @@ while generation < 1000 %Run for 1000 Generations
    %If dimension 2, plot objective space and decision space, respectively
    %if(dim == 2)
         clf;
-        subplot(2,1,1);
+        %subplot(2,1,1);
         scatter(fitness(:,1),fitness(:,2));
-        subplot(2,1,2);
-        scatter(parent_pop(:,1), parent_pop(:,2));  
+        %subplot(2,1,2);
+        %scatter(parent_pop(:,1), parent_pop(:,2));  
         drawnow
    %end
    
@@ -177,6 +183,7 @@ function rp_fronts = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fi
     end
     p_fronts = (i) - p_fronts;
     %Find RP-dominated Pareto Front
+    
     for i = 1:size_pop
         rp_dom(i,:) = (logical(p_fronts(i) < p_fronts(:)))' | (logical(p_fronts(i) == p_fronts(:))' & rp_dom(i,:)); 
     end
@@ -205,7 +212,7 @@ function rp_fronts = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fi
     end
     rp_fronts = (i) - rp_fronts;
     fronts = [p_fronts rp_fronts];
-    
+   
 end
 
 
@@ -239,14 +246,29 @@ function sol = objective(m_pop, idx)
                 %sol = (m_pop(:,1) - 5).^2 + (m_pop(:,2) - 5).^2;
                 
                 %DTLZ1
+                g = 1 + (9/29)*(sum(m_pop(:,2:end)'))';
+                h = 1 - sqrt(m_pop(:,1)./g);
+                sol = g.*h;
+                
+                
+                %DTLZ2
                 %g = 1 + (9/29)*(sum(m_pop(:,2:end)'))';
-                %h = 1 - sqrt(m_pop(:,1)./g);
+                %h = 1 - (m_pop(:,1)./g).^2;
                 %sol = g.*h;
                 
                 %DTLZ3
-                g = 1 + (9/29)*(sum(m_pop(:,2:end)'))';
-                h = 1 - sqrt(m_pop(:,1)./g) - (m_pop(:,1)./g).*sin(10*pi*m_pop(:,1));
-                sol = g.*h;
+                %g = 1 + (9/29)*(sum(m_pop(:,2:end)'))';
+                %h = 1 - sqrt(m_pop(:,1)./g) - (m_pop(:,1)./g).*sin(10*pi*m_pop(:,1));
+                %sol = g.*h;
+            %case 3
+                %g = 1 + (9/29)*(sum(m_pop(:,2:end)'))';
+                %h = 1 - (m_pop(:,1)./g).^2;
+                %sol = h;                
+            %case 4
+                %g = 1 + (9/29)*(sum(m_pop(:,2:end)'))';
+                %h = 1 - (m_pop(:,1)./g).^2;
+                %sol = g.*h;
+                
          end
               
         end
@@ -297,7 +319,13 @@ function Q_t = variation(P_t, range)
         %Randonmly select 2 parents
         p_1 = P_t(ceil(rand*pop_size), :);
         p_2 = P_t(ceil(rand*pop_size), :);
-        
+        % Gaussian Selection
+        %rand1 = (1/sqrt(2*pi*0.01))*e^(-(rand)^2/(2*0.01));
+        %rand2 = (1/sqrt(2*pi*0.01))*e^(-(rand)^2/(2*0.01));
+        %rand1 = 1 - exp(-(rand)^2/(2*0.01));
+        %rand2 = 1 - exp(-(rand)^2/(2*0.01));
+        %p_1 = P_t(ceil(rand1*pop_size), :);
+        %p_2 = P_t(ceil(rand2*pop_size), :);
         %"An improved adaptive NSGA-II with multi-population algorithm 
         %"Analyzing Mutation Schemes for Real-Parameter Genetic Algorithms"
         %"Simulated Binary Crossover for Continuous Search Space"
@@ -314,6 +342,7 @@ function Q_t = variation(P_t, range)
             c_1(j) = 0.5*((1 - beta)*p_1(j) + (1 + beta)*p_2(j));
             c_2(j) = 0.5*((1 + beta)*p_1(j) + (1 - beta)*p_2(j));
             %Polynomial Mutation
+            
             if u_m <= 0.5
                 delta_l = (2*u_m)^(1/(zeta_m + 1)) - 1;
                 c_1(j) = c_1(j) + delta_l*(c_1(j) - range(j,2));
@@ -323,11 +352,59 @@ function Q_t = variation(P_t, range)
                 c_1(j) = c_1(j) + delta_r*(range(j,1) - c_1(j));
                 c_2(j) = c_2(j) + delta_r*(range(j,1) - c_2(j));
             end
+            
         end
         Q_t(i,:) = c_1;
         Q_t(i + 1,:) = c_2;
     end
 end
+
+function Q_t = DE_variation(P_t, range, num_obj)
+    global F;
+    global Cr;
+    pop_size = size(P_t,1);
+    dim = size(P_t,2);
+        
+    Q_t = zeros(pop_size, dim);
+    v = zeros(pop_size,dim); %Candidate generation for crossover
+    
+    for i = 1:pop_size
+        select = round(rand(3,1)'*pop_size); %Generate random selection
+        select_check = [select i]; %Conditional check
+        while((size(unique(select_check),2) ~= 4) || (min(select) == 0))
+            select = round(rand(3,1)'*pop_size);
+            select_check = [select i];
+        end
+        v(i,:) = P_t(select(1),:) + F*(P_t(select(3),:)-P_t(select(2),:));
+        
+        v(i,:) = abs(v(i,:));
+        if(max(v(i,:)) > range(1,1))
+           v(i,:) = (v(i,:)./max(v(i,:)))*range(1,1);
+        elseif(min(v(i,:)) < range(1,2))
+           v(i,:) = abs((v(i,:)./min(v(i,:))));%*range(1,2);
+        end
+        for j = 1:dim
+           if(rand < Cr)
+              Q_t(i,j) = v(i,j);
+           else
+              Q_t(i,j) = P_t(i,j);
+           end
+        end
+    end
+    for i = 1:num_obj
+       fitness_candidate(:,i) = objective(Q_t, i);
+       fitness_parent(:,i) = objective(P_t, i);
+    end
+    for i = 1:pop_size   
+        if(sum(fitness_candidate(i,:)') <= sum(fitness_parent(i,:)'))
+
+        else                
+            Q_t(i,:) = P_t(i,:);
+        end
+    end
+
+end
+
 
 
 function [M, I] = permn(V, N, K)
