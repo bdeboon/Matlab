@@ -210,7 +210,7 @@ function rp_fronts = non_RPD_dominated_sorting(merged_pop, fitness, d_1, d_2, fi
         end
         i = i + 1;
     end
-    rp_fronts = (i) - rp_fronts;
+    rp_fronts = i) - rp_fronts;
     fronts = [p_fronts rp_fronts];
    
 end
