@@ -51,8 +51,8 @@ solution = zeros(100,3);
 
 
 %%%%%%%%%% Optimizer Parameters %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-pop_size = 50; %Population Size
-num_obj = 7; %Number of objectives
+pop_size = 100; %Population Size
+num_obj = 6; %Number of objectives
 num_div = 10; %Number of divisions
 dim = 13; %Dimension of Problem
 global zeta_c; %Crossover Rate
@@ -63,7 +63,7 @@ generation = 1; %Number of generations
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-sim('Inv_Pend_Sim_Compressed', 'CaptureErrors', 'on');
+
 
 q = ((J_p*(M+m))+(M*m*l^2));
 au_22 = -((J_p+m*l^2)*b_c)/q;
@@ -90,32 +90,34 @@ Ad = sysd.A;
 Bd = sysd.B;
 Cd = sysd.C;
 
+sim('Inv_Pend_Sim_Compressed', 'CaptureErrors', 'on');
 
 
 range = ones(dim, 2); %Create range of variables for evaluation in
 %the form of [max min; max min; ...]
 
 
-range(1:2,1) = 1; %h_1p,c max
-range(1:2,2) = 0.0001; %h_1p,c min
+range(1:2,1) = 0.01; %h_1p,c max
+range(1:2,2) = 0.00001; %h_1p,c min
 range(3:4,1) = 100; %r_p,c max
-range(3:4,2) = 0; %r_p,c min
+range(3:4,2) = 0.01; %r_p,c min
 range(5:6,1) = 1.5; %c_p,c max
 range(5:6,2) = 0.5; %c_p,c min
 range(7,1) = 1; %b_0 max
 range(7,2) = 0.0001; %b_0 min
 range(8:9,1) = 2; %beta_01p,c max
 range(8:9,2) = 0.5; %beta_01p,c min
-range(10:11,1) = 1; %beta_02p,c max
-range(10:11,2) = 0; %beta_02p,c min
-range(12:13,1) = 1; %beta_03p,c max
-range(12:13,2) = 0; %beta_03p,c min
+range(10:11,1) = 0.001; %beta_02p,c max
+range(10:11,2) = 0.000000001; %beta_02p,c min
+range(12:13,1) = 0.001; %beta_03p,c max
+range(12:13,2) = 0.000000001; %beta_03p,c min
 
 %Initialize population
 parent_pop = zeros(pop_size,dim); %Parent Population
 variation_pop = zeros(pop_size,dim); %Variant Population
 fitness_extremes = zeros(num_obj, 2); %Formatted as [max, min]
-landmarks = zeros(pop_size,dim,11);
+landmarks = zeros(pop_size,dim,30);
+stored_fitness = ones(20,num_obj, 501);
 
 %\\\\\\\   Initialize Parent Population 
 parent_pop = rand(pop_size,dim);
@@ -135,7 +137,7 @@ C_ref = find(sum(A_ref') == 1); %Find Permutations with sum = 1
 % From "Normal-Boundary Intersection: A New Method for Generating the
 % Pareto Surface in Nonlinear Multicriteria Optimization Problems"
 
-RPset = zeros(num_combs, num_obj); %Referece Point Set
+%RPset = zeros(num_combs, num_obj); %Referece Point Set
 RPdensity = zeros(num_combs,1); %Reference Point Density
 %Generate Reference Points
 for i = 1:sum(sum(A_ref') == 1)
@@ -145,7 +147,7 @@ end
 
 
 % Run the optimizer RPD-NSGA-2
-while generation < 1000 %Run for 1000 Generations
+while generation < 500 %Run for 1000 Generations
    next_gen_pop = zeros(pop_size,dim); %Zero Child Population
    variation_pop = variation(parent_pop, range); %Vary Parent Population
    merged_pop = union(parent_pop, variation_pop, 'rows'); %Merge Parent and Variant Populations
@@ -153,12 +155,22 @@ while generation < 1000 %Run for 1000 Generations
    %Find fitness for each objective
    for i = 1:num_obj
        fitness(:,i) = objective(merged_pop, i);
+  
        %Find extreme fitness values for each objective for normalization
        fitness_extremes(i, 2) = min(fitness(:,i));
        fitness_extremes(i, 1) = max(fitness(:,i));
    end
+   
+   stored_fitness(1:size(fitness,1),:,generation) = fitness; 
    %Normalize the fitness to [0,1]
    fitness = normalize(fitness, fitness_extremes);
+   
+   %Bias Most Important Fitness Values
+   for i = 1:num_obj
+       if i > 2
+            fitness(:,i) = fitness(:,i) + i*10;
+       end
+   end
    
    %d_2 is the euclidean distance to the nearest reference point 
    d_2 = zeros(size(fitness,1), 3); % [value, index, RPdensity]
@@ -218,13 +230,14 @@ while generation < 1000 %Run for 1000 Generations
   
    parent_pop = next_gen_pop;
    
+   generation = generation + 1
    %Save landmark populations for improvement comparison
-   if rem(generation, 100) == 0
-       gen_index = generation/100;
+   if rem(generation, 25) == 0
+       gen_index = generation/25;
        landmarks(:,:,gen_index) = parent_pop;
    end
    
-   generation = generation + 1
+   
    
 end
 
@@ -374,37 +387,37 @@ function sol = objective(m_pop, idx)
                         solution(i,2) = sum(abs(res.ADRC_Simulation.Data(:,4)-res.ADRC_Simulation.Data(:,2))); 
                         
                         %Control Effort
-                        solution(i,3) = sum(abs(res.ADRC_Simulation.Data(:,3))); 
+                        %solution(i,3) = sum(abs(res.ADRC_Simulation.Data(:,3))); 
                         
                         %Rise Time
                         rise_time = find(res.ADRC_Simulation.Data(126:4000,2) > 0.1,1,'first');
                         if rise_time >= 1
-                            solution(i,4) = res.ADRC_Simulation.Time(126 + rise_time);
+                            solution(i,3) = res.ADRC_Simulation.Time(126 + rise_time);
                         else 
-                            solution(i,4) = 15 - 0.01*i; %Max Time
+                            solution(i,3) = 15 - 0.01*i; %Max Time
                         end
                         
                         %Steady State Error (last 0.5s before disturbance)
-                        solution(i,5) = sum(abs(res.ADRC_Simulation.Data(2500:2749,4)-res.ADRC_Simulation.Data(2500:2749,2)));
+                        solution(i,4) = sum(abs(res.ADRC_Simulation.Data(2500:2749,4)-res.ADRC_Simulation.Data(2500:2749,2)));
                         
                         %Percent Overshoot
                         if (max(res.ADRC_Simulation.Data(126:2749,2)) > 0.1) %If an overshoot exists
-                            solution(i,6) = abs(max(res.ADRC_Simulation.Data(126:2749,2)) - 0.1); %Cart Overshoot
-                        elseif (solution(i,5) < 1) %If the solution has little steady state error
-                            solution(i,6) = 0; %Set overshoot to zero
+                            solution(i,5) = abs(max(res.ADRC_Simulation.Data(126:2749,2)) - 0.1); %Cart Overshoot
+                        elseif (solution(i,4) < 1) %If the solution has little steady state error
+                            solution(i,5) = 0; %Set overshoot to zero
                         else  %Set if no overshoot and poor steady state response
-                            solution(i,6) = 5 - 0.01*i; %Penalize weak controller
+                            solution(i,5) = 5 - 0.01*i; %Penalize weak controller
                         end
                         
                         %Settling Time
                         %find last time where abs(ref - cart_pos) < 5% ref 
                         settling_time = find(abs(res.ADRC_Simulation.Data(126:2749,4) - res.ADRC_Simulation.Data(126:2749,2)) > 0.005,1,'last');
                         if settling_time >= 2500 %If not settled in 5.25 seconds
-                            solution(i,7) = 20 - 0.01*i; %Penalize for not settling
+                            solution(i,6) = 20 - 0.01*i; %Penalize for not settling
                         elseif settling_time >= 1
-                            solution(i,7) = res.ADRC_Simulation.Time(126 + settling_time);
+                            solution(i,6) = res.ADRC_Simulation.Time(126 + settling_time);
                         else
-                            solution(i,7) = 15 - 0.01*i;
+                            solution(i,6) = 15 - 0.01*i;
                         end
                             
                             
